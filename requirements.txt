@@ -1,0 +1,37 @@
+# Streamlit UI
+streamlit>=1.32.0
+
+# LangChain + LangGraph + Azure OpenAI
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langchain-community>=0.2.0
+langchain-experimental>=0.0.58
+langgraph>=0.1.0
+openai>=1.30.0
+
+# Azure AD authentication (no API key — uses DefaultAzureCredential)
+azure-identity>=1.16.0
+
+# PDF extraction
+pdfplumber>=0.11.0
+pymupdf>=1.24.0
+camelot-py[cv]>=0.11.0
+
+# Word document extraction
+python-docx>=1.1.0
+
+# Excel extraction and export
+openpyxl>=3.1.0
+pandas>=2.2.0
+tabulate>=0.9.0
+
+# Embeddings (local, no API cost)
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+
+# Metadata and persistence
+python-dotenv>=1.0.0
+
+# Utilities
+numpy>=1.26.0
+Pillow>=10.0.0
