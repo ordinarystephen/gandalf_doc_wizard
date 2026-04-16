@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Environment — never commit real credentials
+.env
+
+# Runtime data (FAISS indexes and SQLite log — too large for git)
+data/*.faiss
+data/*.json
+data/*.db
+
+# OS
+.DS_Store
