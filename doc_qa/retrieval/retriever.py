@@ -23,7 +23,7 @@ def _get_embeddings() -> "HuggingFaceEmbeddings":
     global _embeddings
     if _embeddings is None:
         from langchain_huggingface import HuggingFaceEmbeddings as _HFE
-        _embeddings = _HFE(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        _embeddings = _HFE(model_name="models/all-MiniLM-L6-v2/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf")
     return _embeddings
 
 
@@ -64,7 +64,7 @@ def _rerank(query: str, chunks: List[dict]) -> List[Tuple[dict, float]]:
     to financial document Q&A.
     """
     from sentence_transformers import CrossEncoder
-    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    model = CrossEncoder("models/ms-marco-MiniLM-L-6-v2/snapshots/c5ee24cb16019beea0893ab7796b1df96625c6b8")
     pairs = [(query, c["text"]) for c in chunks]
     scores = model.predict(pairs)
     return list(zip(chunks, scores.tolist()))
