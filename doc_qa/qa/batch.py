@@ -13,7 +13,7 @@ def _answer_for_doc(question: str, filename: str, doc_id: str, chain) -> "Answer
     """Answer one question against one document's FAISS index."""
     from doc_qa.retrieval.vectorstore import load_index
     from doc_qa.retrieval.retriever import retrieve
-    from doc_qa.qa.chain import answer_question, AnswerResult  # noqa: F401
+    from doc_qa.qa.chain import answer_question
 
     index, metadata_dict, position_map = load_index([doc_id])
     chunks = retrieve(question, index, metadata_dict, position_map, top_k=10, rerank_top_n=5)
@@ -67,7 +67,7 @@ def run_batch(
                     "timestamp": result.timestamp,
                     "model_deployment": result.model_deployment,
                     "extraction_methods_used": ",".join(
-                        {c.extraction_method for c in result.retrieved_chunks}
+                        dict.fromkeys(c.extraction_method for c in result.retrieved_chunks)
                     ),
                     "chunk_ids_used": ",".join(
                         c.chunk_id for c in result.retrieved_chunks
