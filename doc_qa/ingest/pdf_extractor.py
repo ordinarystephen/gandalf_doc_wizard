@@ -96,11 +96,7 @@ def extract_pdf(file_path: str) -> List[RawChunk]:
                     continue
                 try:
                     fitz_page = pdf_fitz[page_num - 1]
-                    x0, y1_pdf = img["x0"], img["y1"]
-                    x1, y0_pdf = img["x1"], img["y0"]
-                    # Convert pdfplumber bottom-left origin to fitz top-left origin
-                    y0 = page.height - y1_pdf
-                    y1 = page.height - y0_pdf
+                    x0, y0, x1, y1 = img["x0"], img["y0"], img["x1"], img["y1"]
                     rect = fitz.Rect(x0, y0, x1, y1)
                     pixmap = fitz_page.get_pixmap(clip=rect, dpi=150)
                     from doc_qa.ingest.image_table import extract_image_table
