@@ -53,7 +53,7 @@ def run_batch(
 
                 top_chunk = result.retrieved_chunks[0] if result.retrieved_chunks else None
                 trace_rows.append({
-                    "question": question,
+                    "query": question,
                     "filename": filename,
                     "doc_id": doc_id,
                     "answer": result.answer,
@@ -77,7 +77,7 @@ def run_batch(
                 logger.error("Batch error (%s, %s): %s", question[:30], filename, exc)
                 answers[question][filename] = f"ERROR: {exc}"
                 trace_rows.append({
-                    "question": question, "filename": filename, "doc_id": doc_id,
+                    "query": question, "filename": filename, "doc_id": doc_id,
                     "answer": f"ERROR: {exc}", "confidence_level": "Low",
                     "top_chunk_page": "",
                     "top_chunk_section": "",
