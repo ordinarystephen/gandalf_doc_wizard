@@ -121,7 +121,7 @@ def extract_pdf(file_path: str) -> List[RawChunk]:
 
             if raw_tables:
                 extraction_method = "pdfplumber_table"
-            else:
+            elif len(page.extract_text() or "") >= 200:
                 raw_tables = _extract_with_camelot(file_path, page_num)
                 extraction_method = "camelot_table"
 
