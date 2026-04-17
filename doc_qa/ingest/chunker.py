@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def _get_embeddings():
     """Return a HuggingFaceEmbeddings instance (local model, no API cost)."""
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
