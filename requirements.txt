@@ -15,9 +15,9 @@ openai>=1.30.0
 # Azure AD authentication (no API key — uses DefaultAzureCredential)
 azure-identity==1.25.0
 
-# Tracking and platform
-mlflow[databricks]==3.7.0
-aice-mcflow-plugins==0.1.3
+# Tracking and platform (work/Domino only — not needed for local testing)
+# mlflow[databricks]==3.7.0
+# aice-mcflow-plugins==0.1.3
 
 # PDF extraction
 pdfplumber>=0.11.0
