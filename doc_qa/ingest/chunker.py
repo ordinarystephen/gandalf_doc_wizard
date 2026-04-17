@@ -16,10 +16,15 @@ from doc_qa.ingest.extractor import ProcessedChunk, RawChunk
 logger = logging.getLogger(__name__)
 
 
+_embeddings = None
+
 def _get_embeddings():
-    """Return a HuggingFaceEmbeddings instance (local model, no API cost)."""
-    from langchain_huggingface import HuggingFaceEmbeddings
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    """Return a cached HuggingFaceEmbeddings instance (local model, no API cost)."""
+    global _embeddings
+    if _embeddings is None:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        _embeddings = HuggingFaceEmbeddings(model_name="models/all-MiniLM-L6-v2/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf")
+    return _embeddings
 
 
 def _chunk_prose(raw: RawChunk) -> List[ProcessedChunk]:
