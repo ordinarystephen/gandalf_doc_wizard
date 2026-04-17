@@ -1,10 +1,9 @@
 # doc_qa/ingest/chunker.py
-"""Semantic chunking for prose; passthrough for tables and image tables.
+"""Chunking for prose; passthrough for tables and image tables.
 
-SemanticChunker is used over RecursiveCharacterTextSplitter because fixed-size
-splitting cuts mid-thought. Semantic splitting preserves complete ideas, which is
-critical when a section like "Sources of Repayment" spans several sentences that
-must stay together for accurate retrieval.
+RecursiveCharacterTextSplitter is used for speed — no embedding calls during
+ingestion. chunk_size=800 with chunk_overlap=100 keeps financial sentences
+together while staying well under the embedding model's 256-token limit.
 """
 
 import logging
@@ -16,37 +15,16 @@ from doc_qa.ingest.extractor import ProcessedChunk, RawChunk
 logger = logging.getLogger(__name__)
 
 
-_embeddings = None
-
-def _get_embeddings():
-    """Return a cached HuggingFaceEmbeddings instance (local model, no API cost)."""
-    global _embeddings
-    if _embeddings is None:
-        from langchain_huggingface import HuggingFaceEmbeddings
-        _embeddings = HuggingFaceEmbeddings(model_name="models/all-MiniLM-L6-v2/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf")
-    return _embeddings
-
-
 def _chunk_prose(raw: RawChunk) -> List[ProcessedChunk]:
-    """Split prose using SemanticChunker with percentile breakpointing.
+    """Split prose using RecursiveCharacterTextSplitter."""
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    breakpoint_threshold_amount=85 means we split when semantic similarity
-    drops below the 85th percentile — aggressive splitting produces focused
-    chunks better suited for targeted financial Q&A.
-    """
-    try:
-        from langchain_experimental.text_splitter import SemanticChunker
-        splitter = SemanticChunker(
-            embeddings=_get_embeddings(),
-            breakpoint_threshold_type="percentile",
-            breakpoint_threshold_amount=85,
-        )
-        texts = splitter.split_text(raw.text)
-        if not texts:
-            texts = [raw.text]
-    except Exception as exc:
-        logger.warning("SemanticChunker failed, using full text: %s", exc)
-        texts = [raw.text]
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    texts = splitter.split_text(raw.text) or [raw.text]
 
     return [
         ProcessedChunk(
