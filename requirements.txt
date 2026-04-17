@@ -9,7 +9,7 @@ langchain-huggingface>=0.0.3
 langchain-experimental>=0.0.60
 langchain-text-splitters>=0.3.0
 langgraph==0.6.7
-langgraph-checkpoint==2.2.1
+langgraph-checkpoint==2.1.2
 openai>=1.30.0
 
 # Azure AD authentication (no API key — uses DefaultAzureCredential)
