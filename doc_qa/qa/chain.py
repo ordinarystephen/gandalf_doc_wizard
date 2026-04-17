@@ -69,7 +69,9 @@ class AnswerResult:
 def build_llm():
     """Construct AzureChatOpenAI authenticated via DefaultAzureCredential.
 
-    Reads: AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT, OPENAI_API_VERSION.
+    Deployment and API version are read from env vars with sensible defaults.
+    azure_endpoint is optional — Domino environments provide it via a local proxy
+    automatically; set AZURE_OPENAI_ENDPOINT explicitly for local/non-Domino use.
     No API key — Azure AD bearer token is obtained at runtime.
     """
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -79,15 +81,20 @@ def build_llm():
     token_provider = get_bearer_token_provider(
         credential, "https://cognitiveservices.azure.com/.default"
     )
-    deployment = os.environ["AZURE_OPENAI_DEPLOYMENT"]
-    llm = AzureChatOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+
+    kwargs = dict(
         azure_deployment=deployment,
-        openai_api_version=os.getenv("OPENAI_API_VERSION", "2024-02-01"),
         azure_ad_token_provider=token_provider,
+        api_version=os.getenv("OPENAI_API_VERSION", "2025-04-01-preview"),
         temperature=0,
     )
-    logger.info("LLM initialised: deployment=%s", deployment)
+    if endpoint:
+        kwargs["azure_endpoint"] = endpoint
+
+    llm = AzureChatOpenAI(**kwargs)
+    logger.info("LLM initialised: deployment=%s endpoint=%s", deployment, endpoint or "proxy")
     return llm
 
 
