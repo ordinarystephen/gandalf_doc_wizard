@@ -63,9 +63,10 @@ def ingest_file(uploaded_file) -> str:
 
     raw = ingest_document(tmp_path, uploaded_file.name)
     processed = chunk_raw(raw)
-    doc_id = processed[0].doc_id if processed else None
-    if doc_id:
-        build_index(processed, doc_id)
+    if not processed:
+        raise ValueError(f"No content extracted from {uploaded_file.name}")
+    doc_id = processed[0].doc_id
+    build_index(processed, doc_id)
     os.unlink(tmp_path)
     return doc_id
 
@@ -148,6 +149,8 @@ with st.sidebar:
 if mode == "Chat":
     st.header("Chat")
 
+    from doc_qa.utils.confidence import confidence_color
+
     # Render full chat history (user + assistant messages)
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
@@ -159,16 +162,16 @@ if mode == "Chat":
                 chunks = meta.get("retrieved_chunks", [])
 
                 # Source chips: one per retrieved chunk
-                chip_cols = st.columns(min(len(chunks), 5))
-                for i, chunk in enumerate(chunks[:5]):
-                    with chip_cols[i]:
-                        st.caption(
-                            f"**{chunk['filename']}** · p.{chunk['page_number']} · "
-                            f"{chunk['reranker_score']:.2f} · {chunk['extraction_method']}"
-                        )
+                if chunks:
+                    chip_cols = st.columns(min(len(chunks), 5))
+                    for i, chunk in enumerate(chunks[:5]):
+                        with chip_cols[i]:
+                            st.caption(
+                                f"**{chunk['filename']}** · p.{chunk['page_number']} · "
+                                f"{chunk['reranker_score']:.2f} · {chunk['extraction_method']}"
+                            )
 
                 # Confidence badge
-                from doc_qa.utils.confidence import confidence_color
                 level = meta.get("confidence_level", "Low")
                 color = confidence_color(level)
                 st.markdown(
@@ -274,6 +277,7 @@ if mode == "Chat":
                         logging.exception("Chat error")
 
 else:  # Batch mode
+    from doc_qa.qa.batch import run_batch, export_to_excel
     st.header("Batch Q&A")
     st.info("Upload a question sheet (xlsx with a 'questions' column) and select "
             "documents. Click Run Batch to generate the answer grid.")
@@ -286,8 +290,6 @@ else:  # Batch mode
                      use_container_width=True)
 
     if st.button("Run Batch", disabled=not (active_docs and st.session_state.batch_questions)):
-        from doc_qa.qa.batch import run_batch, export_to_excel
-
         progress = st.progress(0)
         status = st.status("Running batch…", expanded=True)
 
@@ -302,24 +304,25 @@ else:  # Batch mode
                 chain=get_llm(),
                 progress_callback=_cb,
             )
-            st.session_state.batch_results = (answers_df, trace_df)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                export_path = tmp.name
+            export_to_excel(answers_df, trace_df, export_path)
+            with open(export_path, "rb") as fh:
+                export_bytes = fh.read()
+            os.unlink(export_path)
+            st.session_state.batch_results = (answers_df, trace_df, export_bytes)
             status.update(label="Batch complete!", state="complete")
         except Exception as exc:
             status.update(label=f"Batch failed: {exc}", state="error")
 
     if st.session_state.batch_results:
-        answers_df, trace_df = st.session_state.batch_results
+        answers_df, trace_df, export_bytes = st.session_state.batch_results
         st.subheader("Answer grid")
         st.dataframe(answers_df, use_container_width=True)
 
-        # Export button — writes to a temp file and offers download
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as f:
-            export_path = f.name
-        export_to_excel(answers_df, trace_df, export_path)
-        with open(export_path, "rb") as f:
-            st.download_button(
-                "Download Excel export",
-                data=f.read(),
-                file_name="batch_results.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+        st.download_button(
+            "Download Excel export",
+            data=export_bytes,
+            file_name="batch_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
