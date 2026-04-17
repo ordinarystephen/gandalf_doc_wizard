@@ -28,7 +28,21 @@ def make_sample_docx(path="tests/fixtures/sample.docx"):
     table.cell(1, 1).text = "65%"
     doc.save(path)
 
+def make_sample_xlsx(path="tests/fixtures/sample.xlsx"):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Financials"
+    ws.append(["Metric", "2023", "2024"])
+    ws.append(["Revenue", 1000000, 1200000])
+    ws.append(["EBITDA", 300000, 380000])
+    ws2 = wb.create_sheet("Covenants")
+    ws2.append(["Covenant", "Threshold", "Actual"])
+    ws2.append(["DSCR", "1.20x", "1.35x"])
+    wb.save(path)
+
 if __name__ == "__main__":
     make_sample_pdf()
     make_sample_docx()
+    make_sample_xlsx()
     print("Fixtures created.")
