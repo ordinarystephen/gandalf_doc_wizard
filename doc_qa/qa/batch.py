@@ -9,11 +9,11 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def _answer_for_doc(question: str, filename: str, doc_id: str, chain) -> Any:
+def _answer_for_doc(question: str, filename: str, doc_id: str, chain) -> "AnswerResult":
     """Answer one question against one document's FAISS index."""
     from doc_qa.retrieval.vectorstore import load_index
     from doc_qa.retrieval.retriever import retrieve
-    from doc_qa.qa.chain import answer_question
+    from doc_qa.qa.chain import answer_question, AnswerResult  # noqa: F401
 
     index, metadata_dict, position_map = load_index([doc_id])
     chunks = retrieve(question, index, metadata_dict, position_map, top_k=10, rerank_top_n=5)
@@ -79,6 +79,16 @@ def run_batch(
                 trace_rows.append({
                     "question": question, "filename": filename, "doc_id": doc_id,
                     "answer": f"ERROR: {exc}", "confidence_level": "Low",
+                    "top_chunk_page": "",
+                    "top_chunk_section": "",
+                    "top_reranker_score": "",
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "latency_seconds": 0.0,
+                    "timestamp": "",
+                    "model_deployment": "",
+                    "extraction_methods_used": "",
+                    "chunk_ids_used": "",
                 })
 
             done += 1
