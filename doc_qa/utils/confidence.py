@@ -16,4 +16,4 @@ def score_confidence(top_reranker_score: float) -> str:
 
 def confidence_color(confidence_level: str) -> str:
     """Return a dark hex color for the confidence badge."""
-    return {"High": "#27500A", "Medium": "#633806", "Low": "#791F1F"}[confidence_level]
+    return {"High": "#27500A", "Medium": "#633806", "Low": "#791F1F"}.get(confidence_level, "#791F1F")

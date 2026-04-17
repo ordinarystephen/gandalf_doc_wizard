@@ -9,12 +9,22 @@ similarity alone for targeted financial questions.
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import faiss
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+_embeddings: Optional[Any] = None
+
+
+def _get_embeddings() -> "HuggingFaceEmbeddings":
+    global _embeddings
+    if _embeddings is None:
+        from langchain_huggingface import HuggingFaceEmbeddings as _HFE
+        _embeddings = _HFE(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    return _embeddings
 
 
 @dataclass
@@ -42,9 +52,7 @@ class RetrievedChunk:
 
 def _embed_query(query: str) -> np.ndarray:
     """Embed a query string using the same model used at index time."""
-    from langchain_huggingface import HuggingFaceEmbeddings
-    embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    return np.array(embedder.embed_query(query), dtype="float32")
+    return np.array(_get_embeddings().embed_query(query), dtype="float32")
 
 
 def _rerank(query: str, chunks: List[dict]) -> List[Tuple[dict, float]]:

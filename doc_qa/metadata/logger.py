@@ -3,6 +3,7 @@
 
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Any, Dict
 
 import pandas as pd
@@ -35,6 +36,7 @@ class QueryLogger:
 
     def __init__(self, db_path: str = "data/query_log.db") -> None:
         self.db_path = db_path
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _init_db(self) -> None:

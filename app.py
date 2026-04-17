@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 # "chat_history"   : list of {"role": "user"|"assistant", "content": str, "meta": dict|None}
 # "qa_chain"       : AzureChatOpenAI chain instance (lazy-loaded)
 # "batch_questions": list[str] from uploaded question sheet
-# "batch_results"  : (answers_df, trace_df) from last batch run
+# "batch_results"  : (answers_df, trace_df, export_bytes) from last batch run
 
 if "uploaded_docs" not in st.session_state:
     st.session_state.uploaded_docs = {}

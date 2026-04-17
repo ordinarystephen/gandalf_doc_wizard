@@ -94,8 +94,8 @@ def load_index(
 
         # Extract raw vectors from the index
         n = idx.ntotal
-        vecs = faiss.rev_swig_ptr(idx.get_xb(), n * dimension)
-        vecs = np.frombuffer(vecs, dtype="float32").reshape(n, dimension).copy()
+        vecs = np.empty((n, dimension), dtype="float32")
+        idx.reconstruct_n(0, n, vecs)
         all_vectors.append(vecs)
 
         with open(meta_path) as f:
