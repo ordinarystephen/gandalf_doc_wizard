@@ -16,15 +16,11 @@ import faiss
 import numpy as np
 
 from doc_qa.ingest.extractor import ProcessedChunk
+from doc_qa.retrieval._embeddings import get_embeddings
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DATA_DIR = "data"
-
-
-def _get_embeddings():
-    from langchain_huggingface import HuggingFaceEmbeddings
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 
 def build_index(
@@ -40,7 +36,7 @@ def build_index(
         data_dir: Directory to write {doc_id}.faiss and {doc_id}_meta.json.
     """
     Path(data_dir).mkdir(parents=True, exist_ok=True)
-    embedder = _get_embeddings()
+    embedder = get_embeddings()
     texts = [c.embedding_text for c in processed_chunks]
 
     logger.info("Embedding %d chunks for doc_id=%s", len(texts), doc_id)

@@ -23,50 +23,74 @@ def _make_meta(n=5):
     return meta, position_map
 
 
-def test_retrieve_returns_reranked_chunks():
+def _unit_vec(d, rng):
+    v = rng.standard_normal(d).astype("float32")
+    return v / np.linalg.norm(v)
+
+
+def test_retrieve_returns_top_n_sorted_by_similarity():
     import faiss
-    d = 384
+    rng = np.random.default_rng(42)
+    d = 1536  # matches text-embedding-3-small
     index = faiss.IndexFlatL2(d)
-    vecs = np.random.rand(5, d).astype("float32")
+    vecs = np.stack([_unit_vec(d, rng) for _ in range(5)])
     index.add(vecs)
     meta, position_map = _make_meta(5)
 
     with patch("doc_qa.retrieval.retriever._embed_query",
-               return_value=np.random.rand(d).astype("float32")):
-        with patch("doc_qa.retrieval.retriever._rerank",
-                   side_effect=lambda q, chunks: [(c, 0.9 - i * 0.1)
-                                                   for i, c in enumerate(chunks)]):
-            from doc_qa.retrieval.retriever import retrieve
-            results = retrieve(
-                query="What is the DSCR?",
-                index=index,
-                metadata_dict=meta,
-                position_map=position_map,
-                top_k=5, rerank_top_n=3,
-            )
+               return_value=_unit_vec(d, rng)):
+        from doc_qa.retrieval.retriever import retrieve
+        results = retrieve(
+            query="What is the DSCR?",
+            index=index,
+            metadata_dict=meta,
+            position_map=position_map,
+            top_k=5, rerank_top_n=3,
+        )
+
     assert len(results) == 3
     assert results[0].rank == 1
-    assert results[0].reranker_score >= results[1].reranker_score
+    # FAISS returns ascending L2 distance → descending cosine similarity
+    assert results[0].reranker_score >= results[1].reranker_score >= results[2].reranker_score
 
 
-def test_retrieve_fields_populated():
+def test_retrieve_reranker_score_is_cosine_from_l2():
+    """reranker_score should equal 1 - L2²/2 clamped to [0,1] (unit-norm vectors)."""
     import faiss
-    d = 384
+    rng = np.random.default_rng(7)
+    d = 1536
     index = faiss.IndexFlatL2(d)
-    vecs = np.random.rand(3, d).astype("float32")
+    vecs = np.stack([_unit_vec(d, rng) for _ in range(3)])
     index.add(vecs)
     meta, position_map = _make_meta(3)
 
     with patch("doc_qa.retrieval.retriever._embed_query",
-               return_value=np.random.rand(d).astype("float32")):
-        with patch("doc_qa.retrieval.retriever._rerank",
-                   side_effect=lambda q, chunks: [(c, 0.8) for c in chunks]):
-            from doc_qa.retrieval.retriever import retrieve
-            results = retrieve("test", index, meta, position_map, top_k=3, rerank_top_n=2)
+               return_value=_unit_vec(d, rng)):
+        from doc_qa.retrieval.retriever import retrieve
+        results = retrieve("test", index, meta, position_map, rerank_top_n=3)
 
-    assert len(results) == 2
+    assert len(results) == 3
     for r in results:
         assert r.chunk_id in meta
         assert r.faiss_score >= 0
-        assert r.reranker_score == 0.8
+        assert 0.0 <= r.reranker_score <= 1.0
+        expected = max(0.0, min(1.0, 1.0 - (r.faiss_score / 2.0)))
+        assert abs(r.reranker_score - expected) < 1e-6
         assert r.rank >= 1
+
+
+def test_retrieve_handles_fewer_chunks_than_top_n():
+    import faiss
+    rng = np.random.default_rng(3)
+    d = 1536
+    index = faiss.IndexFlatL2(d)
+    vecs = np.stack([_unit_vec(d, rng) for _ in range(2)])
+    index.add(vecs)
+    meta, position_map = _make_meta(2)
+
+    with patch("doc_qa.retrieval.retriever._embed_query",
+               return_value=_unit_vec(d, rng)):
+        from doc_qa.retrieval.retriever import retrieve
+        results = retrieve("test", index, meta, position_map, rerank_top_n=5)
+
+    assert len(results) == 2

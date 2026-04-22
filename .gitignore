@@ -10,10 +10,11 @@ build/
 # Environment — never commit real credentials
 .env
 
-# Runtime data (FAISS indexes and SQLite log — too large for git)
+# Runtime data (FAISS indexes, SQLite log, uploaded source files — too large for git)
 data/*.faiss
 data/*.json
 data/*.db
+data/sources/
 
 # OS
 .DS_Store

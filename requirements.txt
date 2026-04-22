@@ -5,19 +5,18 @@ streamlit>=1.32.0
 langchain==0.3.27
 langchain-openai==0.3.33
 langchain-community>=0.3.0
-langchain-huggingface>=0.0.3
-langchain-experimental>=0.0.60
 langchain-text-splitters>=0.3.0
 langgraph==0.6.7
-langgraph-checkpoint==2.1.2
+langgraph-checkpoint==2.1.1
 openai>=1.30.0
 
 # Azure AD authentication (no API key — uses DefaultAzureCredential)
 azure-identity==1.25.0
 
-# Tracking and platform (work/Domino only — not needed for local testing)
-# mlflow[databricks]==3.7.0
-# aice-mcflow-plugins==0.1.3
+# Tracking and platform — optional at local-dev time (chain.py guards the import).
+# Required when deploying the GraphResponsesAgent to Domino/Databricks.
+mlflow[databricks]==3.7.0
+# aice-mcflow-plugins==0.1.3   # enable if your Domino/AICE environment requires it
 
 # PDF extraction
 pdfplumber>=0.11.0
@@ -32,10 +31,8 @@ openpyxl>=3.1.0
 pandas>=2.2.0
 tabulate>=0.9.0
 
-# Embeddings (local, no API cost)
-sentence-transformers>=3.0.0
+# Vector store (embeddings come from OpenAI API — see doc_qa/retrieval/vectorstore.py)
 faiss-cpu>=1.8.0
-torchvision
 
 # Metadata and persistence
 python-dotenv>=1.0.0

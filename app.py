@@ -17,6 +17,17 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load AZURE_OPENAI_* variables from .env file
 
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _cached_render_pdf_page(file_path: str, page_number: int) -> bytes:
+    """Streamlit-cached wrapper around the PDF page renderer.
+
+    Streamlit reruns the script on every interaction — without caching, each
+    expander click would re-rasterize every page. Cache key is (path, page).
+    """
+    from doc_qa.utils.pdf_render import render_pdf_page
+    return render_pdf_page(file_path, page_number)
+
 logging.basicConfig(level=logging.INFO)
 
 # ---------------------------------------------------------------------------
@@ -24,7 +35,7 @@ logging.basicConfig(level=logging.INFO)
 # ---------------------------------------------------------------------------
 # "uploaded_docs"  : dict {filename: {"doc_id": str, "status": "indexing"|"ready"}}
 # "chat_history"   : list of {"role": "user"|"assistant", "content": str, "meta": dict|None}
-# "qa_chain"       : AzureChatOpenAI chain instance (lazy-loaded)
+# "qa_chain"       : chat LLM instance (AzureChatOpenAI or ChatOpenAI — env-driven, lazy-loaded)
 # "batch_questions": list[str] from uploaded question sheet
 # "batch_results"  : (answers_df, trace_df, export_bytes) from last batch run
 
@@ -41,34 +52,48 @@ if "batch_results" not in st.session_state:
 
 
 def get_llm():
-    """Lazy-load the AzureChatOpenAI LLM once and cache in session state."""
+    """Lazy-load the chat LLM once and cache in session state.
+
+    build_llm() auto-selects AzureChatOpenAI (work/Domino) or ChatOpenAI
+    (local) based on env vars — see doc_qa/qa/chain.py::build_llm.
+    """
     if st.session_state.qa_chain is None:
         from doc_qa.qa.chain import build_llm
         st.session_state.qa_chain = build_llm()
     return st.session_state.qa_chain
 
 
-def ingest_file(uploaded_file) -> str:
+_SOURCES_DIR = Path("data/sources")
+
+
+def ingest_file(uploaded_file) -> tuple[str, str]:
     """Write an uploaded file to disk, run ingest pipeline, build FAISS index.
 
-    Returns the doc_id for the indexed document.
+    The original file is retained at data/sources/{doc_id}{ext} so the UI can
+    render source pages later for audit — the primary audit feature for credit
+    analysts. Returns (doc_id, persisted_source_path).
     """
     from doc_qa.ingest.extractor import ingest_document
     from doc_qa.ingest.chunker import chunk_raw
     from doc_qa.retrieval.vectorstore import build_index
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as f:
+    suffix = Path(uploaded_file.name).suffix
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
         f.write(uploaded_file.getbuffer())
         tmp_path = f.name
 
     raw = ingest_document(tmp_path, uploaded_file.name)
     processed = chunk_raw(raw)
     if not processed:
+        os.unlink(tmp_path)
         raise ValueError(f"No content extracted from {uploaded_file.name}")
     doc_id = processed[0].doc_id
     build_index(processed, doc_id)
-    os.unlink(tmp_path)
-    return doc_id
+
+    _SOURCES_DIR.mkdir(parents=True, exist_ok=True)
+    source_path = _SOURCES_DIR / f"{doc_id}{suffix}"
+    os.replace(tmp_path, source_path)
+    return doc_id, str(source_path)
 
 
 # ---------------------------------------------------------------------------
@@ -95,16 +120,23 @@ with st.sidebar:
     if new_files:
         for f in new_files:
             if f.name not in st.session_state.uploaded_docs:
-                st.session_state.uploaded_docs[f.name] = {"doc_id": None, "status": "indexing"}
+                st.session_state.uploaded_docs[f.name] = {
+                    "doc_id": None, "status": "indexing",
+                    "file_path": None, "file_type": Path(f.name).suffix.lstrip(".").lower(),
+                }
                 with st.spinner(f"Indexing {f.name}…"):
                     try:
-                        doc_id = ingest_file(f)
+                        doc_id, source_path = ingest_file(f)
                         st.session_state.uploaded_docs[f.name] = {
-                            "doc_id": doc_id, "status": "ready"
+                            "doc_id": doc_id, "status": "ready",
+                            "file_path": source_path,
+                            "file_type": Path(f.name).suffix.lstrip(".").lower(),
                         }
                     except Exception as exc:
                         st.session_state.uploaded_docs[f.name] = {
-                            "doc_id": None, "status": f"error: {exc}"
+                            "doc_id": None, "status": f"error: {exc}",
+                            "file_path": None,
+                            "file_type": Path(f.name).suffix.lstrip(".").lower(),
                         }
 
     # Show status badges for each uploaded document
@@ -116,7 +148,10 @@ with st.sidebar:
 
     # Active docs selector — query all or a chosen subset
     ready_docs = [
-        {"filename": n, "doc_id": i["doc_id"]}
+        {
+            "filename": n, "doc_id": i["doc_id"],
+            "file_path": i.get("file_path"), "file_type": i.get("file_type"),
+        }
         for n, i in st.session_state.uploaded_docs.items()
         if i["status"] == "ready"
     ]
@@ -180,23 +215,73 @@ if mode == "Chat":
                     unsafe_allow_html=True,
                 )
 
-                # Expandable trace drawer
+                # Expandable trace drawer — header row plus one card per source chunk
                 with st.expander("Answer trace"):
                     st.write(f"**Document:** {meta.get('filename', 'N/A')}")
                     st.write(f"**Model:** {meta.get('model_deployment')} | "
                              f"**Tokens:** {meta.get('prompt_tokens')}+{meta.get('completion_tokens')} | "
                              f"**Latency:** {meta.get('latency_seconds', 0):.1f}s | "
                              f"**Time:** {meta.get('timestamp')}")
-                    if chunks:
-                        import pandas as pd
-                        trace_table = pd.DataFrame([{
-                            "page": c["page_number"],
-                            "section": c["section_heading"],
-                            "method": c["extraction_method"],
-                            "chars": c["char_count"],
-                            "reranker": f"{c['reranker_score']:.3f}",
-                        } for c in chunks])
-                        st.dataframe(trace_table, use_container_width=True)
+
+                    # Structured citations (if the LLM emitted any via
+                    # with_structured_output). Each citation has already been
+                    # validated against the retrieved chunk set; the chunk_id
+                    # here is guaranteed to match one of the source cards below.
+                    citations = meta.get("citations") or []
+                    cited_ids = {cit["chunk_id"] for cit in citations}
+                    if citations:
+                        st.markdown("**Citations**")
+                        for cit in citations:
+                            st.markdown(
+                                f"- p.{cit['page_number']} · "
+                                f"{cit.get('section_heading') or 'no heading'} — "
+                                f"\"{cit['quote']}\""
+                            )
+                        st.markdown("---")
+
+                    # Per-chunk source cards: extracted text on the left, page render
+                    # on the right. Primary audit mechanism for credit analysts —
+                    # "where exactly in the document did the AI read this?"
+                    for i, chunk in enumerate(chunks, start=1):
+                        cited_tag = " · [cited]" if chunk["chunk_id"] in cited_ids else ""
+                        label = (
+                            f"Source {i} — {chunk['filename']} · p.{chunk['page_number']}"
+                            f" · {chunk.get('section_heading') or 'no heading'}{cited_tag}"
+                        )
+                        with st.expander(label):
+                            st.caption(
+                                f"Method: {chunk['extraction_method']} · "
+                                f"Type: {chunk.get('content_type', 'n/a')} · "
+                                f"Chars: {chunk['char_count']} · "
+                                f"Reranker: {chunk['reranker_score']:.3f}"
+                            )
+                            text_col, img_col = st.columns([1, 1])
+                            with text_col:
+                                st.markdown("**Extracted text**")
+                                st.text_area(
+                                    label="chunk_text",
+                                    value=chunk.get("text", ""),
+                                    height=300,
+                                    key=f"chunk_text_{chunk['chunk_id']}_{i}",
+                                    label_visibility="collapsed",
+                                )
+                            with img_col:
+                                st.markdown(f"**Page {chunk['page_number']} preview**")
+                                file_type = (chunk.get("file_type") or "").lower()
+                                file_path = chunk.get("file_path")
+                                if file_type == "pdf" and file_path:
+                                    try:
+                                        img = _cached_render_pdf_page(
+                                            file_path, chunk["page_number"]
+                                        )
+                                        st.image(img, use_container_width=True)
+                                    except Exception as exc:
+                                        st.warning(f"Could not render page: {exc}")
+                                else:
+                                    st.info(
+                                        "Page preview is PDF-only — DOCX and XLSX "
+                                        "sources show extracted text only."
+                                    )
 
     # Chat input box
     if question := st.chat_input("Ask a question about your documents…"):
@@ -212,13 +297,23 @@ if mode == "Chat":
                     try:
                         from doc_qa.retrieval.vectorstore import load_index
                         from doc_qa.retrieval.retriever import retrieve
-                        from doc_qa.qa.chain import answer_question
+                        from doc_qa.qa.chain import (
+                            answer_question, is_summarization_query, summarize_documents,
+                        )
                         from doc_qa.metadata.logger import QueryLogger
 
                         doc_ids = [d["doc_id"] for d in active_docs]
-                        index, meta_dict, position_map = load_index(doc_ids)
-                        chunks = retrieve(question, index, meta_dict, position_map)
-                        result = answer_question(question, chunks, get_llm())
+
+                        # Summarization bypasses retrieval: a "summarize" query won't
+                        # semantically match any specific chunk, so top-k retrieval
+                        # starves the LLM. Send whole documents instead.
+                        if is_summarization_query(question):
+                            result = summarize_documents(question, doc_ids, get_llm())
+                            chunks = result.retrieved_chunks
+                        else:
+                            index, meta_dict, position_map = load_index(doc_ids)
+                            chunks = retrieve(question, index, meta_dict, position_map)
+                            result = answer_question(question, chunks, get_llm())
 
                         st.markdown(result.answer)
 
@@ -245,7 +340,10 @@ if mode == "Chat":
                             } for c in chunks]),
                         })
 
-                        # Store metadata in session state for the trace drawer
+                        # Store metadata in session state for the trace drawer.
+                        # file_path/file_type are copied per-chunk so each chunk is
+                        # self-contained — the trace drawer needs no doc-lookup later.
+                        file_lookup = {d["filename"]: d for d in active_docs}
                         meta_payload = {
                             "model_deployment": result.model_deployment,
                             "timestamp": result.timestamp,
@@ -254,15 +352,28 @@ if mode == "Chat":
                             "latency_seconds": result.latency_seconds,
                             "confidence_level": result.confidence_level,
                             "filename": "; ".join(d["filename"] for d in active_docs),
+                            "citations": [
+                                {
+                                    "chunk_id": cit.chunk_id,
+                                    "page_number": cit.page_number,
+                                    "section_heading": cit.section_heading,
+                                    "quote": cit.quote,
+                                }
+                                for cit in (result.citations or [])
+                            ],
                             "retrieved_chunks": [
                                 {
                                     "filename": c.filename,
                                     "page_number": c.page_number,
                                     "section_heading": c.section_heading,
                                     "extraction_method": c.extraction_method,
+                                    "content_type": c.content_type,
                                     "char_count": c.char_count,
                                     "reranker_score": c.reranker_score,
                                     "chunk_id": c.chunk_id,
+                                    "text": c.text,
+                                    "file_path": file_lookup.get(c.filename, {}).get("file_path"),
+                                    "file_type": file_lookup.get(c.filename, {}).get("file_type"),
                                 }
                                 for c in chunks
                             ],

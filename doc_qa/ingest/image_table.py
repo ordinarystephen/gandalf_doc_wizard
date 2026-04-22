@@ -28,27 +28,34 @@ _VISION_SYSTEM_PROMPT = (
 def _call_vision_api(png_bytes: bytes) -> str:
     """Send a PNG to Azure OpenAI GPT-4o vision and return the text response.
 
-    Separated from extract_image_table so tests can mock it without
-    needing Azure credentials.
+    Mirrors the Kronos auth pattern used in chain.build_llm: bearer token from
+    DefaultAzureCredential, `api_version=` (not the deprecated
+    `openai_api_version=`), and `azure_endpoint` only set when the env provides
+    one — some platforms (Domino proxy) inject it for you.
+
+    Separated from extract_image_table so tests can mock it without needing
+    Azure credentials.
     """
     from azure.identity import DefaultAzureCredential, get_bearer_token_provider
     from langchain_openai import AzureChatOpenAI
     from langchain_core.messages import HumanMessage
 
-    credential = DefaultAzureCredential()
     token_provider = get_bearer_token_provider(
-        credential, "https://cognitiveservices.azure.com/.default"
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
     )
     vision_deployment = os.getenv(
         "AZURE_OPENAI_VISION_DEPLOYMENT",
         os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
     )
-    client = AzureChatOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    kwargs = dict(
         azure_deployment=vision_deployment,
-        openai_api_version=os.getenv("OPENAI_API_VERSION", "2024-02-01"),
+        api_version=os.environ["OPENAI_API_VERSION"],
         azure_ad_token_provider=token_provider,
     )
+    if os.getenv("AZURE_OPENAI_ENDPOINT"):
+        kwargs["azure_endpoint"] = os.environ["AZURE_OPENAI_ENDPOINT"]
+    client = AzureChatOpenAI(**kwargs)
     b64 = base64.b64encode(png_bytes).decode("utf-8")
     message = HumanMessage(content=[
         {"type": "text", "text": _VISION_SYSTEM_PROMPT},
