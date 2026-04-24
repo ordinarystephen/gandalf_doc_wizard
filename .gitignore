@@ -16,5 +16,8 @@ data/*.json
 data/*.db
 data/sources/
 
+# Legacy HuggingFace model cache — not used on overhaul/domino, kept out of git
+models/
+
 # OS
 .DS_Store
