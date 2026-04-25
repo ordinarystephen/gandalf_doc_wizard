@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO)
 # ---------------------------------------------------------------------------
 # "uploaded_docs"  : dict {filename: {"doc_id": str, "status": "indexing"|"ready"}}
 # "chat_history"   : list of {"role": "user"|"assistant", "content": str, "meta": dict|None}
-# "qa_chain"       : chat LLM instance (AzureChatOpenAI or ChatOpenAI — env-driven, lazy-loaded)
+# "qa_chain"       : AzureChatOpenAI instance (lazy-loaded; Azure-only on this branch)
 # "batch_questions": list[str] from uploaded question sheet
 # "batch_results"  : (answers_df, trace_df, export_bytes) from last batch run
 
@@ -52,10 +52,10 @@ if "batch_results" not in st.session_state:
 
 
 def get_llm():
-    """Lazy-load the chat LLM once and cache in session state.
+    """Lazy-load the Azure chat LLM once and cache in session state.
 
-    build_llm() auto-selects AzureChatOpenAI (work/Domino) or ChatOpenAI
-    (local) based on env vars — see doc_qa/qa/chain.py::build_llm.
+    build_llm() requires AZURE_OPENAI_DEPLOYMENT + OPENAI_API_VERSION to be set
+    on this branch — see doc_qa/qa/chain.py::build_llm.
     """
     if st.session_state.qa_chain is None:
         from doc_qa.qa.chain import build_llm

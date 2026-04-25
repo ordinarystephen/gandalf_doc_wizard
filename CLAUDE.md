@@ -9,9 +9,10 @@ Streamlit-based document Q&A system for credit analysts. Users upload PDF/DOCX/X
 |--------|---------|
 | `main` | Production — Azure OpenAI via DefaultAzureCredential (Domino/work) |
 | `local-testing` | Local dev — standard OpenAI via OPENAI_API_KEY |
-| `overhaul` | Active refactor — Kronos-style LangGraph StateGraph + Pydantic Context/State + structured output; HF embeddings/reranker replaced with OpenAI embeddings API |
+| `overhaul` | Active refactor — Kronos-style LangGraph StateGraph + Pydantic Context/State + structured output; HF embeddings/reranker replaced with OpenAI embeddings API; auto-switches Azure↔OpenAI by env |
+| `domino` | Slim Azure-only deploy branch off `overhaul`. No `models/`, no OpenAI key fallback — `build_llm()` and `get_embeddings()` raise `RuntimeError` if Azure env vars missing. |
 
-## Current Branch: `overhaul`
+## Current Branch: `domino`
 
 Forked from `local-testing`. Destination is work/Domino — the branch exists to fix HuggingFace issues that were blocking the app at work and to align the LLM/MLflow plumbing with the Kronos AICE pattern.
 
@@ -31,15 +32,7 @@ source .venv/bin/activate
 streamlit run app.py
 ```
 
-The Azure and OpenAI code paths live in the same files and auto-select based on env vars — no editing required to switch machines.
-
-**Local testing `.env` requires:**
-```
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o
-```
-
-**Work/Domino `.env` requires:**
+**Required env (fail-fast — `RuntimeError` if missing):**
 ```
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
 AZURE_EMBEDDING_DEPLOYMENT=text-embedding-3-small
@@ -48,7 +41,7 @@ AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/   # optional — o
 MLFLOW_TRACKING_URI=databricks   # optional — only if AICE-style tracking is enabled
 ```
 
-Auth is picked in [chain.py::build_llm](doc_qa/qa/chain.py) and both embedders: `AZURE_OPENAI_DEPLOYMENT` set → `AzureChatOpenAI` + `DefaultAzureCredential` + bearer token (scope `https://cognitiveservices.azure.com/.default`); otherwise `ChatOpenAI` + `OPENAI_API_KEY`. Embeddings follow the same rule keyed on `AZURE_EMBEDDING_DEPLOYMENT`. No HuggingFace env vars needed on either branch.
+Auth is built in [chain.py::build_llm](doc_qa/qa/chain.py) (chat) and [_embeddings.py::get_embeddings](doc_qa/retrieval/_embeddings.py) (vectors): `AzureChatOpenAI` / `AzureOpenAIEmbeddings` + `DefaultAzureCredential` + bearer token (scope `https://cognitiveservices.azure.com/.default`). No OpenAI key path exists on this branch — for local dev with an OpenAI key, use `local-testing` or `overhaul`. No HuggingFace anywhere.
 
 ## Running Tests
 

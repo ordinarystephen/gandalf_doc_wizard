@@ -31,7 +31,7 @@ def run_batch(
     Args:
         question_list: List of question strings.
         doc_configs: List of dicts with 'doc_id' and 'filename' keys.
-        chain: Chat LLM from build_llm() (Azure or OpenAI — env-driven).
+        chain: AzureChatOpenAI instance from build_llm().
         progress_callback: Optional fn(current, total) for progress tracking.
 
     Returns:

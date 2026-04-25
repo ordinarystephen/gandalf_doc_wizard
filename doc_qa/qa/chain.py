@@ -102,9 +102,7 @@ class Context(BaseModel):
     via `Context.from_env()` or pass explicit overrides.
     """
     model: str = Field(
-        default_factory=lambda: os.getenv("OPENAI_MODEL")
-        or os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        or "gpt-4o"
+        default_factory=lambda: os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
     )
     temperature: float = 0.0
     api_version: Optional[str] = Field(
@@ -210,48 +208,38 @@ _LLM_SINGLETON: Optional[Any] = None
 
 
 def build_llm(context: Optional[Context] = None):
-    """Create the chat LLM, matching the Kronos AICE formula.
+    """Create the chat LLM via Azure OpenAI + DefaultAzureCredential.
 
-    Auto-selects auth based on env:
-      - AZURE_OPENAI_DEPLOYMENT set → AzureChatOpenAI + DefaultAzureCredential
-        bearer token (production / Domino / work — no API key).
-      - Else → ChatOpenAI + OPENAI_API_KEY (local dev).
-
-    Uses the Context for model/temperature defaults.
+    Azure-only on this branch — no OpenAI key fallback. Required env:
+      AZURE_OPENAI_DEPLOYMENT, OPENAI_API_VERSION
+    Optional: AZURE_OPENAI_ENDPOINT (omit if the platform proxy injects it).
     """
     ctx = context or Context.from_env()
 
-    if os.getenv("AZURE_OPENAI_DEPLOYMENT"):
-        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-        from langchain_openai import AzureChatOpenAI
-
-        token_provider = get_bearer_token_provider(
-            DefaultAzureCredential(),
-            "https://cognitiveservices.azure.com/.default",  # literal — do not change
+    missing = [v for v in ("AZURE_OPENAI_DEPLOYMENT", "OPENAI_API_VERSION") if not os.getenv(v)]
+    if missing:
+        raise RuntimeError(
+            f"Missing required Azure env var(s): {', '.join(missing)}. "
+            "This branch is Azure-only — set them in the Domino project env."
         )
-        kwargs = dict(
-            azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT"],
-            api_version=os.environ["OPENAI_API_VERSION"],
-            azure_ad_token_provider=token_provider,
-            temperature=ctx.temperature,
-        )
-        # Only set azure_endpoint if the env provides one — some platforms
-        # (Domino proxy) inject it for you.
-        if os.getenv("AZURE_OPENAI_ENDPOINT"):
-            kwargs["azure_endpoint"] = os.environ["AZURE_OPENAI_ENDPOINT"]
-        llm = AzureChatOpenAI(**kwargs)
-        logger.info("LLM initialised (Azure): deployment=%s", kwargs["azure_deployment"])
-        return llm
 
-    # Local dev fallback — OpenAI API key.
-    from langchain_openai import ChatOpenAI
+    from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+    from langchain_openai import AzureChatOpenAI
 
-    llm = ChatOpenAI(
-        model=ctx.model,
-        api_key=os.getenv("OPENAI_API_KEY"),
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",  # literal — do not change
+    )
+    kwargs = dict(
+        azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT"],
+        api_version=os.environ["OPENAI_API_VERSION"],
+        azure_ad_token_provider=token_provider,
         temperature=ctx.temperature,
     )
-    logger.info("LLM initialised (OpenAI): model=%s", ctx.model)
+    if os.getenv("AZURE_OPENAI_ENDPOINT"):
+        kwargs["azure_endpoint"] = os.environ["AZURE_OPENAI_ENDPOINT"]
+    llm = AzureChatOpenAI(**kwargs)
+    logger.info("LLM initialised (Azure): deployment=%s", kwargs["azure_deployment"])
     return llm
 
 
@@ -307,12 +295,8 @@ def _validate_citations(
 
 
 def _deployment_name() -> str:
-    """Resolve model name for audit logging across local/Azure."""
-    return (
-        os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        or os.getenv("OPENAI_MODEL")
-        or "unknown"
-    )
+    """Resolve Azure deployment name for audit logging."""
+    return os.getenv("AZURE_OPENAI_DEPLOYMENT") or "unknown"
 
 
 # ---------------------------------------------------------------------------
